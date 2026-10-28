@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="浏览器里的迷你键盘钢琴：键盘、鼠标、触屏演奏，多音色与录音回放。">
+<title>键盘钢琴</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/boot.js"></script>
+</head>
+<body>
+<div class="kp-bg" id="bgEl"><div class="kp-particles" id="bgParticles" hidden></div></div>
+
+<div class="kp-note-layer" id="noteLayer"></div>
+<div class="kp-burst" id="burstLayer"></div>
+
+<div class="kp-app" id="app">
+  <header class="kp-topbar">
+    <div class="kp-topbar__brand">
+      <span class="kp-topbar__logo" aria-hidden="true">♪</span>
+      <span class="kp-topbar__title" data-i18n="app.title">键盘钢琴</span>
+    </div>
+    <span class="kp-chip" id="chipTimbre" role="button" tabindex="0">音色 · 钢琴 (1)</span>
+    <span class="kp-chip" id="chipMode" role="button" tabindex="0">模式一</span>
+    <div class="kp-topbar__spacer"></div>
+    <button class="kp-iconbtn" id="btnRec" title="录音 / Record" aria-label="录音 / Record">●</button>
+    <button class="kp-iconbtn" id="btnShare" title="分享 / Share" aria-label="分享 / Share">🔗</button>
+    <button class="kp-iconbtn" id="btnHelp" title="帮助 / Help" aria-label="帮助 / Help">?</button>
+    <button class="kp-iconbtn" id="btnSettings" title="控制面板 / Settings" aria-label="控制面板 / Settings">⚙</button>
+  </header>
+
+  <main class="kp-stage">
+    <div class="kp-nowplaying">
+      <div class="kp-wave" id="nowWave" data-active="false">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="kp-beat-pulse" id="beatPulse"></div>
+      <div class="kp-nowplaying__line">
+        <span class="kp-nowplaying__notes is-empty" id="nowNotes">—</span>
+        <span class="kp-chord" id="nowChord"></span>
+      </div>
+      <div class="kp-chord-history" id="chordHistory"></div>
+    </div>
+    <div class="kp-piano">
+      <div class="kp-piano__scroll" id="pianoScroll">
+        <div class="kp-piano__keys" id="pianoKeys"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="kp-statusbar">
+    <div class="kp-statusbar__octave" id="octaveLabel">C3 – C6</div>
+    <div class="kp-statusbar__stats" id="statsLabel"></div>
+    <div class="kp-statusbar__hints" id="hintsLabel"></div>
+  </footer>
+
+  <!-- First run intro -->
+  <div class="kp-overlay kp-intro is-hidden" id="introOverlay">
+    <div class="kp-overlay__card">
+      <div class="kp-overlay__title" data-i18n="intro.title">欢迎使用键盘钢琴</div>
+      <div class="kp-overlay__desc" data-i18n="intro.desc">用键盘、鼠标或触摸屏演奏</div>
+      <div class="kp-intro__tips">
+        <div class="kp-intro__tip">
+          <div class="kp-intro__tip-icon">⌨</div>
+          <div class="kp-intro__tip-text"><span data-i18n="intro.tip1">键盘：Z-M / A-K / Q-I 三排</span></div>
+        </div>
+        <div class="kp-intro__tip">
+          <div class="kp-intro__tip-icon">🖱</div>
+          <div class="kp-intro__tip-text"><span data-i18n="intro.tip2">鼠标：左键单击，右键和弦</span></div>
+        </div>
+        <div class="kp-intro__tip">
+          <div class="kp-intro__tip-icon">⚡</div>
+          <div class="kp-intro__tip-text"><span data-i18n="intro.tip3">↑↓ 八度 · [ ] 模式 · 0-9 音色</span></div>
+        </div>
+      </div>
+      <button class="kp-overlay__btn" id="btnIntroStart" data-i18n="intro.btn">开始演奏</button>
+    </div>
+  </div>
+
+  <!-- Start overlay -->
+  <div class="kp-overlay" id="overlay">
+    <div class="kp-overlay__card">
+      <div class="kp-overlay__title" data-i18n="overlay.title">键盘钢琴</div>
+      <div class="kp-overlay__desc" data-i18n="overlay.desc">用键盘演奏的迷你钢琴</div>
+      <button class="kp-overlay__btn" id="btnStart" data-i18n="overlay.btn">点击开始</button>
+    </div>
+  </div>
+
+  <div class="kp-scrim" id="scrim"></div>
+
+  <aside class="kp-drawer" id="drawer">
+    <div class="kp-drawer__header">
+      <span data-i18n="drawer.title">控制面板</span>
+      <button class="kp-iconbtn" id="btnDrawerClose" aria-label="关闭">×</button>
+    </div>
+    <div class="kp-drawer__body">
+      <div class="kp-field">
+        <label data-i18n="field.volume">主音量</label>
+        <div class="kp-field__row">
+          <input type="range" id="setVolume" min="0" max="100" step="1" value="80">
+          <span class="kp-field__val" id="valVolume">80%</span>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.series">音色系列</label>
+        <div class="kp-seg" id="setSeries">
+          <button data-series="electronic" data-i18n="series.electronic">电子系列</button>
+          <button data-series="natural" data-i18n="series.natural">原生系列</button>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.timbre">当前音色</label>
+        <select id="setTimbre"></select>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.mode">键位模式</label>
+        <div class="kp-seg" id="setMode">
+          <button data-mode="mode1" data-i18n="mode.1">模式一</button>
+          <button data-mode="mode2" data-i18n="mode.2">模式二</button>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.fade">淡出时间</label>
+        <div class="kp-field__row">
+          <input type="range" id="setFade" min="0" max="3" step="0.1" value="0.4">
+          <span class="kp-field__val" id="valFade">0.4 s</span>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.ambient">氛围模式</label>
+        <div class="kp-seg" id="setAmbient">
+          <button data-ambient="off" data-i18n="ambient.off">关闭</button>
+          <button data-ambient="on" data-i18n="ambient.on">开启</button>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldReverb" hidden>
+        <label data-i18n="field.reverb">混响强度</label>
+        <div class="kp-field__row">
+          <input type="range" id="setReverb" min="0" max="100" step="1" value="50">
+          <span class="kp-field__val" id="valReverb">50%</span>
+        </div>
+      </div>
+      <!-- Metronome -->
+      <div class="kp-field">
+        <label><span data-i18n="field.metronome">节拍器</span><span class="kp-field__hint" id="metronomeStatus"></span></label>
+        <div class="kp-seg" id="setMetronome">
+          <button data-metro="off" data-i18n="metronome.off">关闭</button>
+          <button data-metro="on" data-i18n="metronome.on">开启</button>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldBpm">
+        <label data-i18n="field.bpm">速度</label>
+        <div class="kp-field__row">
+          <input type="range" id="setBpm" min="40" max="240" step="1" value="90">
+          <span class="kp-field__val" id="valBpm">90</span>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldBeats">
+        <label data-i18n="field.beats">拍号</label>
+        <div class="kp-seg" id="setBeats">
+          <button data-beats="2">2/4</button>
+          <button data-beats="3">3/4</button>
+          <button data-beats="4">4/4</button>
+        </div>
+      </div>
+      <!-- Recording -->
+      <div class="kp-field">
+        <label><span data-i18n="field.recording">录音</span><span class="kp-field__hint" id="recStatus"></span></label>
+        <div class="kp-actions">
+          <button class="kp-btn kp-btn--danger" id="btnRecStart" data-i18n="rec.start">● 录音</button>
+          <button class="kp-btn" id="btnRecPlay" data-i18n="rec.play" disabled>▶ 回放</button>
+          <button class="kp-btn kp-btn--ghost" id="btnRecStop" data-i18n="rec.stop" disabled>■ 停止</button>
+        </div>
+        <div class="kp-actions">
+          <button class="kp-btn kp-btn--ghost" id="btnRecExport" data-i18n="rec.export" disabled>↓ 导出</button>
+          <button class="kp-btn kp-btn--ghost" id="btnRecImport" data-i18n="rec.import">↑ 导入</button>
+          <button class="kp-btn kp-btn--ghost" id="btnRecClear" data-i18n="rec.clear" disabled>✕ 清空</button>
+        </div>
+        <input type="file" id="recFileInput" accept=".json,application/json" style="display:none">
+      </div>
+      <!-- Demo -->
+      <div class="kp-field">
+        <label><span data-i18n="field.demo">演示曲目</span><span class="kp-field__hint" id="demoStatus"></span></label>
+        <div class="kp-actions">
+          <select id="setDemo" style="flex:1;"></select>
+          <button class="kp-btn" id="btnDemoPlay" data-i18n="demo.play">▶ 播放</button>
+          <button class="kp-btn kp-btn--ghost" id="btnDemoStop" data-i18n="demo.stop" disabled>■ 停止</button>
+        </div>
+      </div>
+      <!-- Haptics (mobile only) -->
+      <div class="kp-field" id="fieldHaptics" hidden>
+        <label data-i18n="field.haptics">触觉反馈</label>
+        <div class="kp-seg" id="setHaptics">
+          <button data-haptics="on" data-i18n="haptics.on">开启</button>
+          <button data-haptics="off" data-i18n="haptics.off">关闭</button>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldOrientation" hidden>
+        <label data-i18n="field.orientation">横屏模式</label>
+        <div class="kp-seg" id="setOrientation">
+          <button data-orient="auto" data-i18n="orientation.auto">自动</button>
+          <button data-orient="force" data-i18n="orientation.force">强制</button>
+          <button data-orient="off" data-i18n="orientation.off">关闭</button>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldGyro" hidden>
+        <label data-i18n="field.gyro">陀螺仪检测</label>
+        <div class="kp-seg" id="setGyro">
+          <button data-gyro="on" data-i18n="gyro.on">开启</button>
+          <button data-gyro="off" data-i18n="gyro.off">关闭</button>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.language">语言</label>
+        <div class="kp-seg" id="setLang">
+          <button data-lang="zh" data-i18n="lang.zh">简体中文</button>
+          <button data-lang="en" data-i18n="lang.en">English</button>
+        </div>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.theme">主题</label>
+        <select id="setTheme">
+          <option value="light" data-i18n="theme.light">暖纸</option>
+          <option value="dark" data-i18n="theme.dark">墨夜</option>
+          <option value="sakura" data-i18n="theme.sakura">赤陶</option>
+          <option value="ocean" data-i18n="theme.ocean">海雾</option>
+          <option value="galaxy" data-i18n="theme.galaxy">余烬</option>
+        </select>
+      </div>
+      <div class="kp-field">
+        <label data-i18n="field.hints">键位提示</label>
+        <div class="kp-seg" id="setHints">
+          <button data-hints="letters" data-i18n="hints.letters">字母</button>
+          <button data-hints="notes" data-i18n="hints.notes">音名</button>
+          <button data-hints="off" data-i18n="hints.off">关闭</button>
+        </div>
+      </div>
+      <div class="kp-field" id="fieldShake" hidden>
+        <label data-i18n="field.shake">抖动强度</label>
+        <div class="kp-seg" id="setShake">
+          <button data-shake="1">1</button><button data-shake="2">2</button>
+          <button data-shake="3">3</button><button data-shake="4">4</button>
+          <button data-shake="5">5</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="kp-modal" id="modalHelp">
+    <div class="kp-modal__content">
+      <div class="kp-modal__header">
+        <span data-i18n="help.title">帮助</span>
+        <button class="kp-iconbtn" id="btnHelpClose" aria-label="关闭">×</button>
+      </div>
+      <div class="kp-modal__tabs">
+        <button class="kp-modal__tab is-active" data-tab="text" data-i18n="help.tab.text">文本说明</button>
+        <button class="kp-modal__tab" data-tab="mini" data-i18n="help.tab.mini">迷你键盘示意图</button>
+      </div>
+      <div class="kp-modal__body" id="helpBody"></div>
+    </div>
+  </div>
+
+  <div class="kp-modal" id="modalShare">
+    <div class="kp-modal__content kp-modal__content--sm">
+      <div class="kp-modal__header">
+        <span data-i18n="share.title">分享 / 打开链接</span>
+        <button class="kp-iconbtn" id="btnShareClose" aria-label="关闭">×</button>
+      </div>
+      <div class="kp-modal__body">
+        <p class="kp-share__desc" data-i18n="share.desc">复制下方链接，可在任意浏览器中打开使用。</p>
+        <input type="text" id="shareUrl" class="kp-share__url" readonly>
+        <div class="kp-share__btns">
+          <button class="kp-share__btn" id="btnCopyLink" data-i18n="share.copy">复制链接</button>
+          <button class="kp-share__btn kp-share__btn--ghost" id="btnOpenBrowser" data-i18n="share.open">在浏览器打开</button>
+          <button class="kp-share__btn kp-share__btn--ghost" id="btnSystemShare" data-i18n="share.system">系统分享</button>
+        </div>
+        <p class="kp-share__tip" id="shareTip"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="kp-rotate-hint" id="rotateHint" aria-live="polite">
+  <span class="kp-rotate-hint__icon">↻</span>
+  <span data-i18n="hint.rotate">请解锁屏幕旋转或手动横屏</span>
+  <button class="kp-rotate-hint__close" id="btnRotateHintClose" aria-label="关闭">×</button>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
