@@ -45,10 +45,13 @@ const state={
   orientationMode:safeEnum(storage.get('orientationMode','auto'),['auto','force','off'],'auto'),
   gyroEnabled:safeBool(storage.get('gyroEnabled','true'),true),
   haptics:safeBool(storage.get('haptics','true'),true),
+  velCurve:safeEnum(storage.get('velCurve','natural'),['natural','soft','hard','linear'],'natural'),
+  sustainPedal:false,
   metronomeOn:safeBool(storage.get('metronomeOn','false'),false),
   bpm:safeNum(storage.get('bpm',90),40,240,90),
   beatsPerBar:safeNum(storage.get('beatsPerBar',4),2,4,4),
   introSeen:safeBool(storage.get('introSeen','false'),false),
+  velocityCurve:safeEnum(storage.get('velocityCurve','linear'),['soft','linear','hard'],'linear'),
 };
 function save(key,value){
   if(key==='octaveStart'){storage.set('octaveStart.mode1',value.mode1);storage.set('octaveStart.mode2',value.mode2);}
@@ -60,11 +63,13 @@ const I18N={
   zh:{
     'app.title':'键盘钢琴','overlay.title':'键盘钢琴','overlay.desc':'浏览器里的迷你钢琴','overlay.btn':'点击开始',
     'intro.title':'键盘钢琴','intro.desc':'键盘、鼠标或触屏即可演奏',
-    'intro.tip1':'键盘：Z-M / A-K / Q-I 三排','intro.tip2':'鼠标：左键单击，右键和弦','intro.tip3':'↑↓ 八度 · [ ] 模式 · 0-9 音色','intro.btn':'开始演奏',
+    'intro.tip1':'键盘：Z-M / A-K / Q-I 三排','intro.tip2':'鼠标：左键单击，右键和弦','intro.tip3':'↑↓ 八度 · [ ] 模式 · 0-9 音色 · 空格延音','intro.btn':'开始演奏',
     'drawer.title':'控制面板',
     'section.play':'演奏','section.tempo':'节拍与演示','section.record':'录音','section.look':'外观与语言','section.device':'设备',
-    'field.volume':'主音量','field.series':'音色系列','field.timbre':'当前音色','field.mode':'键位模式',
-    'field.fade':'淡出时间','field.language':'语言','field.theme':'主题',
+    'field.volume':'主音量','field.series':'音色系列','field.timbre':'当前音色','field.mode':'键位模式','field.velCurve':'力度曲线','velCurve.natural':'自然','velCurve.soft':'柔和','velCurve.hard':'硬触','velCurve.linear':'线性','pedal.on':'延音','pedal.off':'',
+    'field.fade':'淡出时间','field.velocity':'力度曲线','field.language':'语言','field.theme':'主题',
+    'velocity.soft':'柔和','velocity.linear':'线性','velocity.hard':'硬朗',
+    'pedal.sustain':'延音','pedal.sustain.title':'延音踏板（空格按住）','pedal.soft':'弱音',
     'field.hints':'键位提示','field.shake':'抖动强度','field.ambient':'氛围模式','field.reverb':'混响强度',
     'field.orientation':'横屏模式','field.gyro':'陀螺仪检测',
     'field.metronome':'节拍器','field.bpm':'速度','field.beats':'拍号',
@@ -116,11 +121,13 @@ const I18N={
   en:{
     'app.title':'Keyboard Piano','overlay.title':'Keyboard Piano','overlay.desc':'A mini piano played with your keyboard','overlay.btn':'Click to Start',
     'intro.title':'Keyboard Piano','intro.desc':'Play with keyboard, mouse or touch',
-    'intro.tip1':'Keyboard: Z-M / A-K / Q-I','intro.tip2':'Mouse: left click, right click for chord','intro.tip3':'↑↓ octave · [ ] mode · 0-9 timbre','intro.btn':'Start Playing',
+    'intro.tip1':'Keyboard: Z-M / A-K / Q-I','intro.tip2':'Mouse: left click, right click for chord','intro.tip3':'↑↓ octave · [ ] mode · 0-9 timbre · Space sustain','intro.btn':'Start Playing',
     'drawer.title':'Settings',
     'section.play':'Play','section.tempo':'Tempo & Demo','section.record':'Recording','section.look':'Look & Language','section.device':'Device',
-    'field.volume':'Master Volume','field.series':'Timbre Series','field.timbre':'Timbre','field.mode':'Key Mode',
-    'field.fade':'Release Time','field.language':'Language','field.theme':'Theme',
+    'field.volume':'Master Volume','field.series':'Timbre Series','field.timbre':'Timbre','field.mode':'Key Mode','field.velCurve':'Velocity Curve','velCurve.natural':'Natural','velCurve.soft':'Soft','velCurve.hard':'Hard','velCurve.linear':'Linear','pedal.on':'Sustain','pedal.off':'',
+    'field.fade':'Release Time','field.velocity':'Velocity Curve','field.language':'Language','field.theme':'Theme',
+    'velocity.soft':'Soft','velocity.linear':'Linear','velocity.hard':'Hard',
+    'pedal.sustain':'Sustain','pedal.sustain.title':'Sustain pedal (hold Space)','pedal.soft':'Soft',
     'field.hints':'Key Hints','field.shake':'Shake Intensity','field.ambient':'Ambient Mode','field.reverb':'Reverb',
     'field.orientation':'Orientation','field.gyro':'Gyroscope',
     'field.metronome':'Metronome','field.bpm':'Tempo','field.beats':'Beats',
@@ -264,6 +271,27 @@ function clampVelocity(v){
   const n=Number(v);
   if(!Number.isFinite(n))return .75;
   return Math.max(.15,Math.min(1,n));
+}
+/* Apply once at note entry (noteOnSafe). Engine/Voice keep pure clampVelocity so curves don't stack. */
+let softPedalDown=false;
+function shapeVelocity(v){
+  let n=Number(v);
+  if(!Number.isFinite(n))n=.75;
+  n=Math.max(0,Math.min(1,n));
+  if(softPedalDown)n*=.65;
+  const curve=state.velocityCurve;
+  if(curve==='soft')n=Math.pow(n,1.55);
+  else if(curve==='hard')n=Math.pow(n,.62);
+  return clampVelocity(n);
+}
+function applyVelCurve(v){
+  const x=clampVelocity(v);
+  const c=state.velCurve||'natural';
+  if(c==='soft')return clampVelocity(Math.pow(x,0.62));
+  if(c==='hard')return clampVelocity(Math.pow(x,1.55));
+  if(c==='linear')return x;
+  /* natural: slightly compress mids, keep soft end playable */
+  return clampVelocity(0.12+Math.pow(x,0.88)*0.88);
 }
 const velocityTracker={
   lastPtrDown:0,lastPtrUp:0,lastPtrDur:120,
@@ -451,6 +479,8 @@ class AudioEngine{
     this.fxActive=false;this.volume=.8;
     this.analyser=null;this.freqData=null;
     this._resuming=null;
+    this.sustainPedal=false;
+    this.pedalHeld=new Set();
   }
   _makeImpulse(duration,decay){
     const rate=this.ctx.sampleRate;
@@ -495,6 +525,7 @@ class AudioEngine{
     const Ctx=window.AudioContext||window.webkitAudioContext;
     if(!Ctx)return;
     try{this.ctx=new Ctx();}catch(e){return;}
+    if(typeof pianoSampler!=='undefined')pianoSampler.attach(this.ctx);
     this.volume=state.masterVolume/100;
     this.masterGain=this.ctx.createGain();
     this.masterGain.gain.value=this.volume;
@@ -539,7 +570,10 @@ class AudioEngine{
     if(!this.ctx)return Promise.resolve();
     if(this.ctx.state==='running')return Promise.resolve();
     if(this._resuming)return this._resuming;
-    this._resuming=this.ctx.resume().then(()=>{this._needsResume=false;}).catch(()=>{}).then(()=>{this._resuming=null;});
+    this._resuming=this.ctx.resume().then(()=>{
+      this._needsResume=false;
+      if(state.timbre===1&&typeof pianoSampler!=='undefined')pianoSampler.prefetchRange(48,72);
+    }).catch(()=>{}).then(()=>{this._resuming=null;});
     return this._resuming;
   }
   setVolume(v01){
@@ -558,9 +592,41 @@ class AudioEngine{
     this._soundNote(midi,vel);
   }
   _soundNote(midi,velocity){
-    const vel=clampVelocity(velocity);
+    const vel=applyVelCurve(velocity);
+    this.pedalHeld.delete(midi);
     const old=this.voices.get(midi);
     if(old){old.release(this.ctx.currentTime,.02);this.voices.delete(midi);}
+    /* timbre 1 = sampled piano; fallback to synth if sample missing */
+    if(state.timbre===1 && typeof pianoSampler!=='undefined' && typeof SampleVoice!=='undefined'){
+      const startSample=(buf)=>{
+        if(!buf){this._synthNote(midi,vel);return;}
+        const v=new SampleVoice(this,midi,buf,vel);
+        v.start(this.ctx.currentTime);
+        this.voices.set(midi,v);
+      };
+      if(pianoSampler.has(midi)){
+        startSample(pianoSampler.buffers.get(midi));
+        pianoSampler.prefetchRange(Math.max(21,midi-12),Math.min(108,midi+12));
+        return;
+      }
+      const token=(this._sampleToken=(this._sampleToken||new Map()));
+      const gen=(token.get(midi)|0)+1;token.set(midi,gen);
+      pianoSampler.loadOne(midi).then(buf=>{
+        if(token.get(midi)!==gen)return;
+        if(!this.ctx||this.ctx.state!=='running')return;
+        /* still held, or held by sustain pedal */
+        if(!midiRefCount.has(midi)&&!this.pedalHeld.has(midi)&&!this.sustainPedal)return;
+        startSample(buf);
+      }).catch(()=>{
+        if(token.get(midi)!==gen)return;
+        if(midiRefCount.has(midi)||this.pedalHeld.has(midi)||this.sustainPedal)this._synthNote(midi,vel);
+      });
+      pianoSampler.prefetchRange(Math.max(21,midi-12),Math.min(108,midi+12));
+      return;
+    }
+    this._synthNote(midi,vel);
+  }
+  _synthNote(midi,vel){
     const preset=getCurrentTimbres()[state.timbre]||getCurrentTimbres()[1];
     const v=new Voice(this,midi,preset,vel);
     v.start(this.ctx.currentTime);
@@ -568,18 +634,46 @@ class AudioEngine{
   }
   noteOff(midi,sec){
     if(!this.ctx)return;
+    if(this.sustainPedal){
+      this.pedalHeld.add(midi);
+      return;
+    }
     const v=this.voices.get(midi);
     if(!v)return;
     this.voices.delete(midi);
+    this.pedalHeld.delete(midi);
     v.release(this.ctx.currentTime,sec);
+  }
+  setSustain(down){
+    const on=!!down;
+    if(this.sustainPedal===on)return;
+    this.sustainPedal=on;
+    state.sustainPedal=on;
+    try{
+      document.documentElement.dataset.sustain=on?'1':'0';
+      window.dispatchEvent(new CustomEvent('kp-sustain',{detail:{on}}));
+    }catch(e){}
+    if(on)return;
+    const sec=typeof getReleaseSecWithFx==='function'?getReleaseSecWithFx():.35;
+    const held=[...this.pedalHeld];
+    this.pedalHeld.clear();
+    held.forEach(midi=>{
+      if(midiRefCount.has(midi))return;
+      const v=this.voices.get(midi);
+      if(!v)return;
+      this.voices.delete(midi);
+      v.release(this.ctx.currentTime,sec);
+    });
   }
   allNotesOff(sec){
     if(!this.ctx)return;
+    this.pedalHeld.clear();
     this.voices.forEach(v=>v.release(this.ctx.currentTime,sec));
     this.voices.clear();
   }
   hardKillAll(){
     if(!this.ctx)return;
+    this.pedalHeld.clear();
     this.voices.forEach(v=>v.stop(this.ctx.currentTime));
     this.voices.clear();
   }
@@ -598,21 +692,75 @@ const engine=new AudioEngine();
 function getReleaseSec(){return state.fadeTime<=0?.02:state.fadeTime;}
 function getReleaseSecWithFx(){return getReleaseSec()*(engine.fxActive?1.3:1);}
 
-/* ========== Ref Count ========== */
+/* ========== Ref Count + Sustain Pedal ========== */
 const midiRefCount=new Map();
+const heldByPedal=new Set();
+let sustainPedalDown=false;
+let sustainPedalLocked=false;
+function getActiveKeyMidis(){
+  const set=new Set();
+  heldKeys.forEach(entry=>set.add(entry.midi));
+  pointerStates.forEach(s=>{
+    if(s.button===2&&!s.dragStarted&&s.anchorTriad)s.anchorTriad.forEach(m=>set.add(m));
+    else if(s.lastMidi!==null)set.add(s.lastMidi);
+  });
+  try{touchMap.forEach(midi=>{if(midi!=null)set.add(midi);});}catch(e){}
+  return set;
+}
 function noteOnSafe(midi,velocity){
+  const vel=shapeVelocity(velocity);
+  heldByPedal.delete(midi);
   const c=midiRefCount.get(midi)||0;
   midiRefCount.set(midi,c+1);
-  if(c===0){engine.noteOn(midi,velocity);recorder.log(midi,true);stats.onNoteOn(midi);haptic(8);}
+  if(c===0){engine.noteOn(midi,vel);recorder.log(midi,true);stats.onNoteOn(midi);haptic(8);}
 }
 function noteOffSafe(midi,sec){
   const c=midiRefCount.get(midi)||0;
   if(c<=0)return;
-  if(c===1){midiRefCount.delete(midi);engine.noteOff(midi,sec);recorder.log(midi,false);}
-  else midiRefCount.set(midi,c-1);
+  if(c===1){
+    midiRefCount.delete(midi);
+    if(sustainPedalDown){
+      heldByPedal.add(midi);
+      /* keep voice; recorder logs when voice actually stops */
+    }else{
+      engine.noteOff(midi,sec);recorder.log(midi,false);
+    }
+  }else midiRefCount.set(midi,c-1);
 }
-function resetAllNotes(sec){engine.allNotesOff(sec);midiRefCount.clear();}
-function hardKillAllNotes(){engine.hardKillAll();midiRefCount.clear();}
+function releasePedalHeld(sec){
+  const still=getActiveKeyMidis();
+  const toRelease=[...heldByPedal];
+  heldByPedal.clear();
+  const releaseSec=sec!=null?sec:getReleaseSecWithFx();
+  toRelease.forEach(midi=>{
+    if(still.has(midi)||midiRefCount.has(midi))return;
+    engine.noteOff(midi,releaseSec);
+    recorder.log(midi,false);
+  });
+}
+function setSustainPedal(down,{fromLock}={}){
+  const next=!!down;
+  if(next===sustainPedalDown&&!fromLock)return;
+  sustainPedalDown=next;
+  if(!next){
+    sustainPedalLocked=false;
+    releasePedalHeld();
+  }
+  updatePedalUI();
+  refreshHighlights();
+}
+function updatePedalUI(){
+  const btn=document.getElementById('btnSustain');
+  if(btn){
+    btn.classList.toggle('is-down',sustainPedalDown);
+    btn.classList.toggle('is-locked',sustainPedalLocked);
+    btn.setAttribute('aria-pressed',sustainPedalDown?'true':'false');
+    btn.title=t('pedal.sustain.title');
+  }
+  document.documentElement.dataset.sustain=sustainPedalDown?'on':'off';
+}
+function resetAllNotes(sec){engine.allNotesOff(sec);midiRefCount.clear();heldByPedal.clear();}
+function hardKillAllNotes(){engine.hardKillAll();midiRefCount.clear();heldByPedal.clear();}
 
 /* ========== Haptics ========== */
 function haptic(ms){
@@ -1266,6 +1414,11 @@ function applyTimbre(n){
   save('timbre',n);
   document.getElementById('setTimbre').value=String(n);
   updateChips();
+  if(n===1){
+    engine.resume().then(()=>{
+      if(typeof pianoSampler!=='undefined')pianoSampler.prefetchRange(36,84);
+    }).catch(()=>{});
+  }
 }
 
 /* ========== Shake ========== */
@@ -1640,6 +1793,13 @@ document.addEventListener('keydown',async e=>{
     }
   }
   const code=e.code;
+  if(code==='Space'){
+    e.preventDefault();
+    if(e.repeat)return;
+    try{await engine.resume();}catch(err){}
+    engine.setSustain(true);
+    return;
+  }
   if(isFunctionKey(code)){
     e.preventDefault();
     if(e.repeat)return;
@@ -1648,6 +1808,9 @@ document.addEventListener('keydown',async e=>{
     if(code==='BracketLeft'){setMode('mode1');return;}
     if(code==='BracketRight'){setMode('mode2');return;}
     applyTimbre(Number(code.slice(-1)));
+    if(state.timbre===1){
+      try{engine.resume().then(()=>{if(typeof pianoSampler!=='undefined')pianoSampler.prefetchRange(36,84);});}catch(err){}
+    }
     return;
   }
   if(!engine.ctx||engine.ctx.state!=='running')return;
@@ -1662,6 +1825,11 @@ document.addEventListener('keydown',async e=>{
   e.preventDefault();
 });
 document.addEventListener('keyup',e=>{
+  if(e.code==='Space'){
+    e.preventDefault();
+    engine.setSustain(false);
+    return;
+  }
   const entry=heldKeys.get(e.code);
   if(!entry)return;
   heldKeys.delete(e.code);
@@ -1676,6 +1844,7 @@ document.addEventListener('keyup',e=>{
 
 /* ========== Blur / Visibility ========== */
 function releaseAllInputs(){
+  engine.setSustain(false);
   resetAllNotes(getReleaseSecWithFx());
   heldKeys.clear();
   pointerStates.forEach((_,pid)=>{try{pianoEl.releasePointerCapture(pid);}catch(e){}});
@@ -1927,6 +2096,15 @@ setFade.addEventListener('input',()=>{
   save('fadeTime',state.fadeTime);
   document.getElementById('valFade').textContent=state.fadeTime.toFixed(1)+' s';
 });
+(function bindVelCurve(){
+  const el=document.getElementById('setVelCurve');
+  if(!el)return;
+  el.value=state.velCurve;
+  el.addEventListener('change',()=>{
+    const v=safeEnum(el.value,['natural','soft','hard','linear'],'natural');
+    state.velCurve=v;save('velCurve',v);
+  });
+})();
 
 /* Ambient + Reverb */
 document.querySelectorAll('#setAmbient button').forEach(b=>{
