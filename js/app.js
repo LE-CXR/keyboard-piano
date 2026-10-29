@@ -972,7 +972,7 @@ const easterEgg={
     const layer=document.getElementById('burstLayer');
     if(!layer)return;
     const cx=window.innerWidth/2,cy=window.innerHeight/2;
-    const colors=['#e4c27a','#d4b06a','#c9a45a','#7aa392','#f0e6d0','#e09050'];
+    const colors=['#a8a8ac','#8a8a8e','#c4c4c8','#7a8a7e','#d0d0d4','#98989c'];
     for(let i=0;i<8;i++){
       const ring=document.createElement('div');
       ring.className='kp-burst__ring';
@@ -995,7 +995,7 @@ const easterEgg={
       s.textContent=symbols[Math.floor(Math.random()*symbols.length)];
       s.style.left=Math.random()*100+'vw';
       s.style.fontSize=(14+Math.random()*16)+'px';
-      s.style.color=['#e4c27a','#d4b06a','#f0e6d0','#7aa392','#e09050'][Math.floor(Math.random()*5)];
+      s.style.color=['#a8a8ac','#8a8a8e','#c4c4c8','#98989c','#b0b0b4'][Math.floor(Math.random()*5)];
       s.style.animationDuration=(2+Math.random()*2)+'s';
       s.style.animationDelay=(Math.random()*0.4)+'s';
       layer.appendChild(s);
@@ -1144,6 +1144,7 @@ function updateHintsLabel(){
 const NOTE_SYMBOLS=['♪','♫','♩','♬','✦','✧'];
 let particleCount=0;
 function spawnNoteParticle(midi){
+  return; /* GarageBand-quiet: no floating note FX */
   const layer=document.getElementById('noteLayer');
   if(!layer)return;
   const kr=keyRects.get(midi);
@@ -1155,7 +1156,7 @@ function spawnNoteParticle(midi){
   const el=document.createElement('div');
   el.className='kp-note-particle';
   el.textContent=NOTE_SYMBOLS[Math.floor(Math.random()*NOTE_SYMBOLS.length)];
-  const palette=['#e4c27a','#d4b06a','#f0e6d0','#7aa392','#c9a45a','#e09050'];
+  const palette=['#a8a8ac','#8a8a8e','#c4c4c8','#98989c','#b0b0b4','#7a8a7e'];
   el.style.color=palette[midi%palette.length];
   el.style.left=x+'px';el.style.top=y+'px';
   el.style.fontSize=(14+Math.random()*12)+'px';
