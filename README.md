@@ -27,3 +27,8 @@ python3 -m http.server 8755
 - `css/app.css` 样式（暖纸 / 墨夜 / 赤陶 / 海雾 / 余烬）
 - `js/boot.js` 主题预载
 - `js/app.js` 音频与交互
+
+## Audio credits
+
+- Acoustic grand piano samples: [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) MusyngKite (via jsDelivr CDN).
+- Other timbres: Web Audio oscillators (local synthesis).
